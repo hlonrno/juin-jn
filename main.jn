@@ -1,0 +1,12 @@
+#in "std.jn"
+
+fn main {
+  std.println("Hello, World!")
+  
+  var arr: []u8 = "hola";
+
+  for c in *arr {
+    std.printf("{c}", c)
+    *arr[0] = 'h'
+  }
+}
