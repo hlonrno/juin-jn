@@ -7,12 +7,12 @@ typedef struct {
   size_t length;
   size_t element_size;
   void *data;
-} vec_t;
+} Vector;
 
-vec_t *vec_init(size_t initial_size, size_t element_size);
-void vec_destroy(vec_t *arr);
-void vec_ensure_capacity(vec_t *arr, size_t capacity);
-void vec_add(vec_t *arr, void *elem);
-void vec_insert(vec_t *arr, void *elem, size_t index);
-void *vec_pop(vec_t *arr, size_t index);
-void vec_trim(vec_t *arr);
+Vector *vec_init(size_t initial_capacity, size_t element_size);
+void vec_destroy(Vector *vec);
+void vec_ensure_capacity(Vector *vec, size_t capacity);
+void vec_add(Vector *vec, void *element);
+void vec_insert(Vector *vec, void *element, size_t index);
+void *vec_pop(Vector *vec, size_t index);
+void vec_trim(Vector *vec);

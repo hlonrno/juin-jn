@@ -1,2 +1,0 @@
-gcc src/*.c -o p
-./p main.jn

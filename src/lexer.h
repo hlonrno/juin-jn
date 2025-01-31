@@ -1,13 +1,20 @@
 #pragma once
 
 #include "vec.h"
-#include "result.h"
+#include <stdbool.h>
 #include <stdio.h>
+#define BUF_SIZE 16
 
-#define SPECIAL_CHARS "#{}()[]:.,;=*/+-"
-#define LETTERS "_qwertyuiopadfghjklzxcvbnmQWERTYUIOPADFGHJKLZXCVBNM"
-#define NUMBERS "1234567890"
-#define IDENT "_0123456789qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM"
+typedef struct {
+  FILE *fptr;
+  char *error_message;
+  Vector *tokens;
+  size_t line_number;
+  size_t index;
+  char current_char;
+  bool error;
+  bool eof;
+  char buf[BUF_SIZE];
+} Lexer;
 
-result_t *tokenize(FILE *pFile);
-
+Lexer *tokenize(FILE *fptr);

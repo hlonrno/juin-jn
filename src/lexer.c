@@ -1,136 +1,200 @@
 #include "lexer.h"
-#include "tokens.h"
+#include "token.h"
+#include "vec.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define IS_NUMBER(n) (n > 47 && n < 58)
+#define IS_SPECIAL_CHAR(n) strchr("#{}()[]:.,;=*/%+-", n)
+#define IS_LETTER(n) ((n > 96 && n < 123) || (n > 64 && n < 91) || n == '_' || n == '#')
+#define IS_IDENTIFIER(n) (IS_LETTER(n) || IS_NUMBER(n))
+#define DO_IGNORE(n) strchr(" \n\t\b\r\0", n)
+#define KEYWORDS "else,if,for,var,while,fn,fnstruct"
 
-char *clean(char *buf) {
-  for (size_t i = 0; buf[i] != '\0'; i++)
-    buf[i] = buf[i] * (buf[i] != '\n') + '^' * (buf[i] == '\n');
+static void advance(Lexer *lexer, size_t count);
+static bool is_keyword(char *identifier);
+static Vector *format(const char fmt[], size_t things);
 
-  return buf;
-}
+static Vector *get_identifier(Lexer *lexer);
+static Vector *get_string(Lexer *lexer);
+static char *get_char(Lexer *lexer);
+static long long get_integer(Lexer *lexer);
 
-result_t *tokenize(FILE *pFile) {
-  vec_t *tokens = vec_init(1024, sizeof(token_t));
-  result_t *result = malloc(sizeof(result_t));
-  result->result = tokens;
+Lexer *tokenize(FILE *fptr) {
+  Lexer *lexer = malloc(sizeof(Lexer));
+  Vector *tokens = vec_init(512, sizeof(Token));
+  lexer->fptr = fptr;
+  lexer->line_number = 1;
+  lexer->tokens = tokens;
+  lexer->eof = 0;
+  advance(lexer, 0);
 
-  char buf[1024];
-  char last_task = 0;
-  size_t idx = 0;
-  char chr;
+  while (!lexer->eof) {
+    if (DO_IGNORE(lexer->current_char)) {
+      advance(lexer, 1);
+      continue;
+    } else if (IS_LETTER(lexer->current_char)) {
+      Vector *identifier = get_identifier(lexer);
+      Token *token = malloc(sizeof(Token));
+      token->type = is_keyword(identifier->data) ? KEYWORD : IDENTIFIER;
+      token->value.arr = identifier;
+      vec_add(tokens, token);
+      // free(token);
+    } else if (IS_SPECIAL_CHAR(lexer->current_char)) {
+      char operator = lexer->current_char;
+      Token *token = malloc(sizeof(Token));
+      token->type = OPERATOR;
+      memcpy(token->value.str, &operator, sizeof(char));
+      vec_add(tokens, token);
+      // free(token);
+    } else if (lexer->current_char == '"') {
+      Vector *str = get_string(lexer);
+      Token *token = malloc(sizeof(Token));
+      token->type = STR_LITERAL;
+      token->value.arr = str;
+      vec_add(tokens, token);
+      // free(token);
+    } else if (IS_NUMBER(lexer->current_char)) {
+      Token *token = malloc(sizeof(Token));
+      long long integer = get_integer(lexer);
+      token->type = INT_LITERAL;
+      token->value.num = integer;
 
-  if (!fgets(buf, sizeof(buf), pFile)) {
-    result->error = "Couldn't read file.";
-    return result;
-  }
-
-  for (;;) {
-  next_chr:
-    idx++;
-    if (idx > sizeof(buf)) {
-      idx %= sizeof(buf);
-      if (!fgets(buf, sizeof(buf), pFile))
-        break;
-    }
-    chr = buf[idx];
-    switch (last_task) {
-    case 1:
-      goto number;
-    case 2:
-      goto string;
-    case 3:
-      goto special_char;
-    case 4:
-      goto character;
-    case 5:
-      goto identifier;
-    }
-
-    if (IS_NUMBER(chr)) {
-      last_task = 1;
-      unsigned long long num = 0;
-      char dot_count = 0;
-      unsigned long long radix = 1;
-
-    number:
-      while (IS_NUMBER(chr)) {
-        if (chr == '.') {
-          dot_count++;
-          if (dot_count > 1)
-            break;
-        }
-        num += (chr - '0') * radix;
-        radix = (radix << 1) + (radix << 3);
-        goto next_chr;
+      if (lexer->current_char == '.') {
+        long long decimal = get_integer(lexer);
+        long long radix = 1;
+        while (decimal > radix) radix *= 10;
+        double flt = integer + decimal / (double)radix;
+        token->type = FLT_LITERAL;
+        token->value.flt = flt;
       }
-
-      token_value_t *val = malloc(sizeof(token_value_t));
-      val->number = num;
-      vec_add(tokens, token_init(NUM_LITERAL, *val));
-      last_task = 0;
-    } else if (chr == '"') {
-      last_task = 2;
-      vec_t *str = vec_init(32, sizeof(chr));
-      goto next_chr;
-
-    string:
-      while (chr != '"') {
-        vec_add(str, &chr);
-        goto next_chr;
-      }
-
-      vec_trim(str);
-      token_value_t *val = malloc(sizeof(token_value_t));
-      val->arr = str;
-      vec_add(tokens, token_init(STR_LITERAL, *val));
-      last_task = 0;
-      goto next_chr;
-    } else if (strchr(SPECIAL_CHARS, chr)) {
-      last_task = 3;
-      token_value_t *val = malloc(sizeof(token_value_t));
-
-    special_char:
-      val->chr = chr;
-      vec_add(tokens, token_init(SPECIAL_CHAR, *val));
-      last_task = 0;
-      goto next_chr;
-    } else if (chr == '\'') {
-      last_task = 4;
-      token_value_t *val = malloc(sizeof(token_value_t));
-      goto next_chr;
-
-    character:
-      val->chr = chr;
-      vec_add(tokens, token_init(CHR_LITERAL, *val));
-      last_task = 0;
-      idx++;
-      goto next_chr;
-    } else if (strchr(LETTERS, chr)) {
-      last_task = 5;
-      vec_t *ident = vec_init(16, sizeof(char));
-
-    identifier:
-      while (strchr(IDENT, chr)) {
-        vec_add(ident, &chr);
-        goto next_chr;
-      }
-
-      token_value_t *val = malloc(sizeof(token_value_t));
-      val->arr = ident;
-      vec_add(tokens, token_init(IDENTIFIER, *val));
-      last_task = 0;
-    } else if (strchr(" \n\t\r\0", chr)) {
-      goto next_chr;
+      vec_add(tokens, token);
+      // free(token);
     } else {
-      result->error = "Couldn't find token.";
-      printf("chr: %c", buf[idx]);
-      printf("\n%zu: %s\n", idx, buf);
-      return result;
+      Vector *message = format("Couldn't find Token. [line %]", lexer->line_number);
+      lexer->error = 1;
+      lexer->error_message = message->data;
+      // free(message);
+      break;
+    }
+    
+    advance(lexer, 1);
+  }
+
+  printf("# Tokens: %zu;\n", tokens->length);
+  vec_trim(tokens);
+  return lexer;
+}
+
+static void advance(Lexer *lexer, size_t count) {
+  lexer->index += count;
+
+  if (lexer->index > BUF_SIZE || count == 0) {
+    lexer->index %= BUF_SIZE;
+    lexer->current_char = '\0';
+    if (!fgets(lexer->buf, BUF_SIZE, lexer->fptr))
+      lexer->eof = 1;
+    else
+      lexer->current_char = lexer->buf[lexer->index];
+  }
+}
+
+static bool is_keyword(char *identifier) {
+  for (size_t i = 0; KEYWORDS[i] != '\0'; i++) {
+    if (identifier[0] == KEYWORDS[i]) {
+      for (size_t j = 0;; j++)
+        if (identifier[j] == '\0' && !IS_IDENTIFIER(KEYWORDS[i + j]))
+          return 1;
+        else if (identifier[j] != KEYWORDS[i + j])
+          break;
+    }
+
+    while (IS_IDENTIFIER(KEYWORDS[i]))
+      i++;
+  }
+
+  return 0;
+}
+
+static Vector *format(const char fmt[], size_t number) {
+  Vector *message = vec_init(32, sizeof(char));
+
+  char count = 0;
+  for (size_t i = 0; fmt[i] != '\0'; i++) {
+    if (count || fmt[i] != '%') {
+      vec_add(message, (void *)(fmt + i));
+      continue;
+    }
+
+    count++;
+    size_t radix = 1;
+    while ((radix *= 10) <= number);
+    radix /= 10;
+
+    while (radix > 0) {
+      char chr = (number / radix) % 10 + '0';
+      vec_add(message, &chr);
+      number %= radix;
+      radix /= 10;
     }
   }
 
-  return result;
+  vec_trim(message);
+  return message;
 }
+
+static Vector *get_identifier(Lexer *lexer) {
+  Vector *identifier = vec_init(16, sizeof(char));
+
+  while (IS_IDENTIFIER(lexer->current_char)) {
+    vec_add(identifier, &lexer->current_char);
+    advance(lexer, 1);
+  }
+
+  vec_trim(identifier);
+  return identifier;
+}
+
+static Vector *get_string(Lexer *lexer) {
+  Vector *str = vec_init(32, sizeof(char));
+
+  advance(lexer, 1);
+  while (lexer->current_char != '"' && !lexer->eof) {
+    vec_add(str, &lexer->current_char);
+    advance(lexer, 1); 
+  }
+  advance(lexer, 1);
+
+  vec_trim(str);
+  return str;
+}
+
+static char *get_char(Lexer *lexer) {
+  char *chr = malloc(1);
+
+  advance(lexer, 1);
+  *chr = lexer->current_char;
+  advance(lexer, 2);
+
+  return chr;
+}
+
+static long long get_integer(Lexer *lexer) {
+  long long num = 0;
+  Vector *str = vec_init(8, sizeof(char));
+
+  while (IS_NUMBER(lexer->current_char)) {
+    vec_add(str, &lexer->current_char);
+    advance(lexer, 1);
+  }
+
+  while (str->length > 0) {
+    num += (*(char *)vec_pop(str, str->length - 1) - '0');
+    num *= 10;
+  }
+
+  vec_destroy(str);
+  return num;
+}
+
