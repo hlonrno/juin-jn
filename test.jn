@@ -1,5 +1,0 @@
-#in "std.jn"
-
-fn main {
-  std.print("Hello, World!");
-}
