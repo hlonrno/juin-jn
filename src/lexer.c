@@ -7,15 +7,27 @@
 #include <string.h>
 
 #define IS_NUMBER(n) (n > 47 && n < 58)
-#define IS_SPECIAL_CHARACTER(n) (strchr("{}()[]:.,;=*/%+-", n) != NULL)
+#define IS_SPECIAL_CHARACTER(n) (strchr("{}()[]:.,;=*/%+-<>", n) != NULL)
 #define IS_IDENTIFIER_BEGIN(n) ((n > 96 && n < 123) || (n > 64 && n < 91) || n == '_' || n == '#')
 #define IS_IDENTIFIER(n) (IS_IDENTIFIER_BEGIN(n) || IS_NUMBER(n))
 #define DO_IGNORE(n) (strchr(" \n\t\b\r", n) != NULL)
-#define BUF_SIZE 16 
+#define BUF_SIZE 32
 
-static const char *const KEYWORDS[] = { "fn", "const", "var", "enum", "struct", "fnstruct" };
-static const char *const OPERATORS[] = { "(", ")", "{", "}", ".", ",", "[", "]", ":", "=", "<", ">" };
-static const char *const TYPES[] = { "Signed", "Unsigned", "Float", "Array" };
+static const char *const KEYWORDS[] = {
+  "var", "const",
+  "if", "else", "for", "while", "switch", "case", "where",
+  "fn", "struct", "error"
+};
+static const char *const OPERATORS[] = {
+  "+", "-", "*", "/", "%", "&", "|", "^", "!", "=", "?", "<", ">", ":",
+  "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "!=", "==", "<<", ">>", "|>", "->",
+  "<<=", ">>=", "|>="
+};
+static const char *const TYPES[] = {
+  "Signed", "Unsigned", "Float", "Array", "Function",
+  "Type", "Error"
+};
+
 static const size_t KEYWORDS_SIZE = sizeof(KEYWORDS) / sizeof(KEYWORDS[0]);
 static const size_t OPERATORS_SIZE = sizeof(OPERATORS) / sizeof(OPERATORS[0]);
 static const size_t TYPES_SIZE = sizeof(TYPES) / sizeof(TYPES[0]);
@@ -37,8 +49,7 @@ void advance(Lexer *const restrict stream, size_t ammount) {
   } else {
     ++stream->index;
     if (stream->index == BUF_SIZE - 1 || stream->buf[stream->index - 1] == '\n') {
-      if (!fgets(stream->buf, BUF_SIZE, stream->fptr))
-        stream->eof = true;
+      stream->eof = !fgets(stream->buf, BUF_SIZE, stream->fptr);
       stream->index = 0;
     }
   }
@@ -62,21 +73,19 @@ void getIdentifier(Lexer *const restrict stream, Token *const restrict token) {
   }
 
   token->type = IDENTIFIER;
-  vectorTrim(&token->value);
 }
 
 void getOperator(Lexer *const restrict stream, Token *const restrict token) {
-  do {
+  for (;;) {
     vectorAdd(&token->value, &stream->current_char);
     if (isIn(token, OPERATORS, OPERATORS_SIZE))
       advance(stream, 1);
     else
       break;
-  } while (true);
+  }
 
   token->type = OPERATOR;
   vectorPop(&token->value);
-  vectorTrim(&token->value);
 }
 
 void getNumber(Lexer *const restrict stream, Token *const restrict token) {
@@ -91,7 +100,6 @@ void getNumber(Lexer *const restrict stream, Token *const restrict token) {
   }
 
   token->type = dotcount ? FLOAT_LITERAL : INT_LITERAL;
-  vectorTrim(&token->value);
 }
 
 void getString(Lexer *const restrict stream, Token *const restrict token) {
@@ -103,7 +111,6 @@ void getString(Lexer *const restrict stream, Token *const restrict token) {
   advance(stream, 1);
 
   token->type = STRING_LITERAL;
-  vectorTrim(&token->value);
 }
 
 void getCharacter(Lexer *const restrict stream, Token *const restrict token) {
@@ -113,14 +120,13 @@ void getCharacter(Lexer *const restrict stream, Token *const restrict token) {
 
   if (stream->current_char != '\'') {
     char *buffer = calloc(64, sizeof(char));
-    snprintf(buffer, 128, "Expected closing quote ('). [line %zu]", stream->current_line);
+    snprintf(buffer, 64 * sizeof(char), "Expected closing quote ('). [line %zu]", stream->current_line);
     stream->error = buffer;
     stream->eof = true;
   }
   advance(stream, 1);
 
   token->type = CHAR_LITERAL;
-  vectorTrim(&token->value);
 }
 
 void lexerInit(Lexer *const restrict stream, char *const restrict file_name) {
@@ -142,21 +148,24 @@ void lexerDeinit(Lexer *const restrict stream) {
   stream->fptr = NULL;
 }
 
-Token *lexerTokenize(Lexer *const restrict stream, Token *const restrict buf, size_t bufferSize) {
+size_t lexerTokenize(Lexer *const restrict stream, Token *const restrict buf, size_t buffer_size) {
   if (stream->eof)
-    return NULL;
+    return 0;
 
   Token token;
-  for (size_t token_index = 0; token_index < bufferSize && !stream->eof; ++token_index) {
-skip:
+  size_t token_index = 0;
+  while (token_index < buffer_size && !stream->eof) {
+    printf("loop %zu '%c'\n", token_index, stream->current_char);
     if (DO_IGNORE(stream->current_char)) {
       advance(stream, 1);
       if (stream->eof)
         break;
-      goto skip;
+      continue;
     }
 
     tokenInit(&token);
+    token.line = stream->current_line;
+    token.begin = stream->index;
     if (IS_IDENTIFIER_BEGIN(stream->current_char)) {
       getIdentifier(stream, &token);
       if (isIn(&token, KEYWORDS, KEYWORDS_SIZE))
@@ -176,12 +185,16 @@ skip:
       char *buffer = calloc(64, sizeof(char));
       snprintf(buffer, sizeof(char) * 64, "Couldn't recognize token. [line %zu]", stream->current_line);
       stream->error = buffer;
-      return NULL;
+      printf("return %s\n", stream->error);
+      return token_index;
     }
-
+    token.end = stream->index - 1;
+    vectorTrim(&token.value);
     buf[token_index] = token;
+    ++token_index;
   }
 
-  return buf;
+  printf("return %zu\n", token_index);
+  return token_index;
 }
 

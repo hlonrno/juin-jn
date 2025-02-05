@@ -1,1 +1,19 @@
-1.2.3.4.5.6.7.8.9.0.
+
+const isize: Type = Signed
+const i8: Type = Signed<8>
+const i16: Type = Signed<16>
+const i32: Type = Signed<32>
+const i64: Type = Signed<64>
+
+const usize: Type = Unsigned
+const u8: Type = Unsigned<8>
+const u16: Type = Unsigned<16>
+const u32: Type = Unsigned<32>
+const u64: Type = Unsigned<64>
+
+const fsize: Type = Float
+const f32: Type = Float<32>
+const f64: Type = Float<64>
+
+const bool: Type = u8
+

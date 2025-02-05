@@ -1,5 +1,6 @@
 #pragma once
 #include "vector.c"
+#include <stdbool.h>
 
 typedef enum {
   PROGRAM,
@@ -11,6 +12,7 @@ typedef enum {
 } NodeType;
 
 typedef struct Node {
+  bool is_leaf;
   NodeType type;
   Vector children;
 } Node;

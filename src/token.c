@@ -13,6 +13,7 @@ typedef enum {
 } TokenType;
 
 typedef struct {
+  size_t line, begin, end;
   TokenType type;
   Vector value;
 } Token;

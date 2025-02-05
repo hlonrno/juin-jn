@@ -27,19 +27,18 @@ int main() {
   Lexer lexer;
   lexerInit(&lexer, "../main.jn");
 
-  Token buf[3];
+  Token buf[50];
   size_t buf_len = sizeof(buf) / sizeof(buf[0]);
 
-  Token *result;
-  while ((result = lexerTokenize(&lexer, buf, buf_len)) != NULL) {
-    printf("result: %p\n", (void *)result);
-    for (size_t i = 0; i < buf_len && buf[i].value.data != NULL; ++i) {
-      printf("<%s: %s>\n", typeToString(buf[i].type), buf[i].value.data);
+  size_t length;
+  while ((length = lexerTokenize(&lexer, buf, buf_len)) > 0) {
+    for (size_t i = 0; i < length; ++i) {
+      printf("|%s:%s|\n", typeToString(buf[i].type), buf[i].value.data);
       tokenDeinit(&buf[i]);
     }
   }
 
-  if (result)
+  if (lexer.error != NULL)
     printf("%s", lexer.error);
 
   lexerDeinit(&lexer);
