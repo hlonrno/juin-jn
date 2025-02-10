@@ -2,8 +2,9 @@ const std = @import("std");
 const lx = @import("lexer.zig");
 
 pub fn main() !void {
+    const alloc = std.heap.page_allocator;
     var code: []const u8 = "123 12.34 \"Hello\" print '\"a'\"B\" if";
-    var lexer = try lx.Lexer().init(std.heap.page_allocator, &code);
+    var lexer = try lx.Lexer().init(alloc, &code);
 
     while (try lexer.nextToken()) |token| {
         switch (token.kind) {
@@ -14,5 +15,10 @@ pub fn main() !void {
             .FLOAT => std.debug.print("<float:{},line:{d}>", .{ token.value.float, token.line }),
         }
         std.debug.print("\n", .{});
+
+        switch (token.value) {
+            .string |s| => alloc.destroy(&s),
+            else => {}
+        }
     }
 }
